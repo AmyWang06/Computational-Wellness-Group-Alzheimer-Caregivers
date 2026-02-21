@@ -16,13 +16,26 @@ This project analyzes interview transcripts and questionnaire data from the ACT 
 - Cross-validation, **AUC / R²** evaluation  
 - pyLDAvis, matplotlib, seaborn
 
-## Project Structure
+## Scripts Overview
+**Alzheimer_Interview_Analysis.py** 
 
-ACT_EMA_Analysis/
-├── data/ # Interview transcripts & questionnaire data
-├── scripts/ # NLP, topic modeling, prediction pipelines
-├── outputs/ # Figures, tables, topic visualizations
-└── README.md
+Preprocesses and analyzes caregiver interview transcripts using NLP techniques, including text cleaning, TF-IDF, n-grams, sentiment analysis, and exploratory visualizations.
+
+**Alzheimer_Interview_Topic Modeling.py**
+
+Performs LDA topic modeling on interview transcripts with coherence-based topic selection and interactive visualization using pyLDAvis.
+
+**Alzheimer_Interview_Prediction Score.py**
+
+Builds predictive models to estimate mental health outcomes (e.g., stress, loneliness, caregiver burden) from interview text using TF-IDF features and Sentence-BERT embeddings.
+
+**Caregiver_Demographics.py**
+
+Analyzes caregiver demographic variables and reports descriptive statistics and subgroup comparisons.
+
+**Caregiver_Survey Analysis.py**
+
+Processes questionnaire data to compute scale scores, apply clinical cutoffs, and examine correlations among mental health measures.
 
 ## Purpose
 Transform qualitative interview data into quantitative insights to support research on mental health and caregiving experiences.
