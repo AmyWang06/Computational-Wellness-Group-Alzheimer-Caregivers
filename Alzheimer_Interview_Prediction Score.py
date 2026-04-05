@@ -7,6 +7,9 @@ import numpy as np
 import nltk
 import string
 import pyreadstat
+from sklearn.decomposition import PCA
+from textblob import TextBlob
+from sklearn.svm import SVC
 
 
 # Preprocessing
@@ -94,30 +97,44 @@ def normalize_study_id(x):
     return f"ACT{num}"
 
 # Classic NLP
-def build_tfidf_features(df, max_features=5000):
+def build_tfidf_features(df, max_features=100):
     """
-    Create TF-IDF features for classical machine learning models.
+    Build classical NLP features using Term Frequency-Inverse Document Frequency (TF-IDF).
+    Each participant's text is represented as a sparse vector of the most important
+    individual words, limited to a small feature set to prevent overfitting on small samples.
     """
     vectorizer = TfidfVectorizer(
         max_features=max_features,
-        ngram_range=(1, 2)
+        ngram_range=(1, 1),
+        min_df=2,
+        max_df=0.7
     )
-
     X = vectorizer.fit_transform(df["clean_text"])
-
     return X, vectorizer
 
 # LLM
-def build_embeddings(df):
+def build_embeddings(df, n_components=8):
     """
-    Build semantic embeddings using a pre-trained Sentence-BERT model.
-    Each participant's text becomes a 768-dimensional vector.
+    Build semantic features using a pre-trained Sentence-BERT model and sentiment analysis.
+    Each participant's text is encoded into a high-dimensional vector space, reduced via
+    Principal Component Analysis (PCA), and augmented with polarity and subjectivity scores.
     """
     model = SentenceTransformer("all-MiniLM-L6-v2")
+    emb = model.encode(df["clean_text"].tolist(), show_progress_bar=True)
 
-    embeddings = model.encode(df["clean_text"].tolist(), show_progress_bar=True)
+    # 1. PCA Reduction
+    pca = PCA(n_components=n_components)
+    emb_reduced = pca.fit_transform(emb)
 
-    return np.array(embeddings)
+    # 2. Add Sentiment (Polarity & Subjectivity)
+    sentiments = df["clean_text"].apply(lambda x: TextBlob(x).sentiment)
+    polarity = sentiments.apply(lambda x: x.polarity).values.reshape(-1, 1)
+    subjectivity = sentiments.apply(lambda x: x.subjectivity).values.reshape(-1, 1)
+
+    # Combine PCA features with sentiment features
+    final_features = np.hstack([emb_reduced, polarity, subjectivity])
+
+    return final_features
 
 # Run
 
@@ -135,7 +152,7 @@ print("Preprocessing completed. Sample cleaned text:")
 print(df["clean_text"].head(3))
 
 # 3. Save cleaned text for inspection
-df.to_csv("processed_transcripts.csv", index=False)
+df.to_csv("data/processed_transcripts.csv", index=False)
 print("Cleaned transcripts saved to 'processed_transcripts.csv'.")
 
 # 4. Build classical NLP features (TF-IDF)
@@ -150,7 +167,7 @@ print("✔ Text preprocessing and feature construction completed.")
 print("Next step: merge with survey scores and train prediction models.")
 
 # 6. Load Visit 2 questionnaire data (.sav)
-sav_path = "ACT V1 V2 Questionnaires_Cytokines_ACT EMA Participants (1).sav"
+sav_path = "data/ACT V1 V2 Questionnaires_Cytokines_ACT EMA Participants (1).sav"
 survey_df, meta = pyreadstat.read_sav(sav_path)
 
 survey_df = survey_df[[
@@ -171,7 +188,7 @@ survey_df["ZBI_bin"] = (survey_df["ZBI_Total12_V2"] >= 20).astype(int)
 print("Visit 2 questionnaire data loaded.")
 
 # 7. Load coping scores (Visit 2)
-coping_df = pd.read_csv("ACT - Visit 2 EMA Participant Questionnaires_with COPE Scores.csv")
+coping_df = pd.read_csv("data/ACT - Visit 2 EMA Participant Questionnaires_with COPE Scores.csv")
 
 coping_df = coping_df[[
     "StudyID",
@@ -202,7 +219,7 @@ from sklearn.model_selection import cross_val_score
 from sklearn.linear_model import LogisticRegression, Ridge
 
 def run_binary_classification(X, y, label):
-    model = LogisticRegression(max_iter=1000)
+    model = SVC(kernel='linear', C=1.0, probability=True)
     auc = cross_val_score(
         model,
         X,
@@ -230,7 +247,7 @@ run_binary_classification(X_tfidf_aligned, df_merged["PSS_bin"], "TF-IDF PSS")
 run_binary_classification(X_tfidf_aligned, df_merged["ZBI_bin"], "TF-IDF ZBI")
 mask = df_merged["ZBI_CutOff_V2"].notna()
 run_binary_classification(
-    X_tfidf_aligned[mask],
+    X_tfidf_aligned[mask.values],
     df_merged.loc[mask, "ZBI_CutOff_V2"],
     "TF-IDF ZBI Cutoff"
 )
@@ -238,7 +255,7 @@ run_binary_classification(
 # Continuous outcomes
 def run_regression_safe(X, y, label):
     mask = y.notna()
-    run_regression(X[mask], y.loc[mask], label)
+    run_regression(X[mask.values], y.loc[mask], label)
 
 run_regression_safe(X_tfidf_aligned, df_merged["UCLALS_Total_V2"], "TF-IDF UCLA Loneliness")
 run_regression_safe(X_tfidf_aligned, df_merged["PSS_Total_V2"], "TF-IDF PSS")
